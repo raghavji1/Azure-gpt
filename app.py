@@ -2,14 +2,13 @@ import os
 import uuid
 from datetime import datetime
 from dotenv import load_dotenv, dotenv_values
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify
 from azure.core.credentials import AzureKeyCredential
 from azure.search.documents import SearchClient
 from azure.search.documents.models import VectorizedQuery
 from openai import AzureOpenAI
 from azure.cosmos import CosmosClient
-from PIL import Image
-from backend import *
+from backend import get_embeddings_vector
 
 # Load environment variables from .env file
 if os.path.exists(".env"):
@@ -92,8 +91,8 @@ def get_llm_response(user_input, search_content, user_id):
 # Function to save conversation history in Cosmos DB
 def save_conversation(user_id, user_message, bot_response):
     item = {
-        'user_id': {'id': str(uuid.uuid4()),},
-          # Unique ID for the message
+        'user_id': user_id,
+        'id': str(uuid.uuid4()),  # Unique ID for the message
         'user_message': user_message,
         'bot_response': bot_response,
         'timestamp': datetime.utcnow().isoformat()  # Store timestamp
@@ -125,17 +124,15 @@ def search_with_vector(query):
 
     return search_results
 
-
 # Function to format the search content for the LLM input
 def format_search_content(search_results):
     return "\n".join(
         [f"{res['doc_ref']} page {res['page_number']}: {res['page_content']}" for res in search_results]
     )
 
-# Route to serve the HTML UI
-@app.route('/')
-def index():
-    return render_template('index.html')
+@app.route("/", methods=["GET"])
+def welcome():
+    return jsonify(message="Hello, welcome to the API :)")
 
 # Endpoint to interact with the LLM
 @app.route('/ask', methods=['POST'])
