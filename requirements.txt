@@ -1,7 +1,5 @@
-os
-re
 uuid
-datetime
+DateTime==5.5
 Flask==3.0.2
 azure-core== 1.30.2
 azure-search-documents==11.5.1
