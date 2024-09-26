@@ -45,8 +45,25 @@ cosmos_client = CosmosClient(cosmos_db_uri, credential=cosmos_db_key)
 database = cosmos_client.get_database_client(database_name)
 container = database.get_container_client(container_name)
 
-# Function to retrieve conversation history from Cosmos DB
 @app.route("/getchathistory", methods=["POST"])
+def get_history():
+    data = request.json
+    user_id = data.get('user_id')
+    
+    # Query to fetch items from Cosmos DB
+    query = "SELECT * FROM c WHERE c.user_id=@user_id ORDER BY c.timestamp DESC"
+    parameters = [{"name": "@user_id", "value": user_id}]
+    
+    # Execute the query and get the result
+    items = list(container.query_items(query=query, parameters=parameters, enable_cross_partition_query=True))
+    
+    # Extract only the user_message and bot_response fields from the result
+    response = [{"req": item.get('user_message'), "res": item.get('bot_response')} for item in items]
+    
+    return response
+
+
+# Function to retrieve conversation history from Cosmos DB
 def get_conversation_history(user_id):
     query = "SELECT * FROM c WHERE c.user_id=@user_id ORDER BY c.timestamp DESC"
     parameters = [{"name": "@user_id", "value": user_id}]
