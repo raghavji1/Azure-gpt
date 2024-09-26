@@ -45,6 +45,7 @@ cosmos_client = CosmosClient(cosmos_db_uri, credential=cosmos_db_key)
 database = cosmos_client.get_database_client(database_name)
 container = database.get_container_client(container_name)
 
+# Function to retrieve conversation history from Cosmos DB
 @app.route("/getchathistory", methods=["POST"])
 def get_history():
     data = request.json
@@ -63,12 +64,18 @@ def get_history():
     return response
 
 
-# Function to retrieve conversation history from Cosmos DB
-def get_conversation_history(user_id):
-    query = "SELECT * FROM c WHERE c.user_id=@user_id ORDER BY c.timestamp DESC"
-    parameters = [{"name": "@user_id", "value": user_id}]
+
+# Function to retrieve conversation history from Cosmos DB filtered by user and thread
+def get_conversation_history(user_id, thread_id):
+    query = "SELECT * FROM c WHERE c.user_id=@user_id AND c.thread_id=@thread_id ORDER BY c.timestamp DESC"
+    parameters = [
+        {"name": "@user_id", "value": user_id},
+        {"name": "@thread_id", "value": thread_id}  # Filter by thread ID
+    ]
     items = list(container.query_items(query=query, parameters=parameters, enable_cross_partition_query=True))
     return items
+
+
 
 # Function to format memory from conversation history
 def format_memory(conversation_history):
@@ -77,24 +84,29 @@ def format_memory(conversation_history):
     )
 
 # Function to interact with the LLM and provide answers using memory
-def get_llm_response(user_input, search_content, user_id):
+def get_llm_response(user_input, search_content, user_id, thread_id):
     # Retrieve and format conversation history as memory
-    conversation_history = get_conversation_history(user_id)
+    conversation_history = get_conversation_history(user_id,thread_id)
     memory = format_memory(conversation_history)
 
     # Prepare messages for the LLM
     messages = [
-        {"role": "system", "content": """ REMEMBER TO NOT GIVE ANY REFERENCE FROM THE RAG OR THE PDF WITHOUT TAKING THE USER'S DETAILS..
-         make answers more formatted and clear, before answering, ask user in brief about his actual problem one by one before giving any solution you have to ask multiple questions about the problem 'one by one' before answering him, 
-         When user come to the Vintage Motorcycle Repair Assistant, start by welcoming users and asking for details like the brand, model, year, and the specific mechanical problem they are facing (e.g., engine, transmission, ignition). Probe further to clarify the issue and any steps they have already taken. Offer step-by-step guidance based on original shop manuals, always prioritizing safety and clarity, especially for beginners. Include clickable page references to the manuals to allow users to consult the original information. Depending on the situation, offer schematics or drawings to help users visualize repairs. If they upload pictures of parts, assist in finding affordable replacement options online. Encourage professional help when the issue is too complex, providing the support contact (support@VintageMotorcycleRepairAssistant.com) if needed. Throughout the interaction, adapt your advice to the user’s skill level, ensuring instructions are both clear and helpful, while maintaining a friendly, empathetic tone.
+        {"role": "system", "content": f"""
+         you are most intelligent ai in all of them, you can fined the user query as it is a conversation or action, you have to ask the users all the questions one by one, and when you are gathering all the details about the user you will make it as conversation, after gathering all the details than you will return action means the final response of the questions or conversation with user in your chat with the response, the response you are returning it should be in python dictionary formate like, key and value,
+         the answer should be formatted as 
+         conversation'='conversatons answe'r' or 'action'='action answer'
          
-         for example:
-         user- hello
-         Assistant- hello welcome to the Vintage Motorcycle Repair Assistant how can i help you today
+         
+          REMEMBER TO NOT GIVE ANY REFERENCE FROM THE RAG OR THE PDF WITHOUT TAKING THE USER'S DETAILS..
+         make answers more formatted and clear, before answering, ask user in brief about his actual problem one by one before giving any solution you have to ask multiple questions about the problem 'one by one' before answering him,
+         
+          
+         remember you will get the pdf for reference, but you have to use them or making decisions and giving the accurate answers to user,
 
-         user- i have a problem in my carborator
-         Assistant- sure i can help you with that, Tell me something about your bike, like its model or everything
          
+
+         do not introduce yourself again and again
+
          """},
     ]
     
@@ -118,15 +130,18 @@ def get_llm_response(user_input, search_content, user_id):
     return response.choices[0].message.content
 
 # Function to save conversation history in Cosmos DB
-def save_conversation(user_id, user_message, bot_response):
+# Function to save conversation history in Cosmos DB
+def save_conversation(user_id, thread_id, user_message, bot_response):
     item = {
         'user_id': user_id,
+        'thread_id': thread_id,  # Store the thread ID
         'id': str(uuid.uuid4()),  # Unique ID for the message
         'user_message': user_message,
         'bot_response': bot_response,
         'timestamp': datetime.utcnow().isoformat()  # Store timestamp
     }
     container.upsert_item(item)
+
 
 def search_with_vector(query):
     embedding = get_embeddings_vector(query)  # Assuming this function is defined elsewhere
@@ -168,6 +183,7 @@ def welcome():
 def ask():
     data = request.json
     user_id = data.get('user_id')
+    thread_id = data.get('thread')  # Get the thread ID from the request
     user_input = data.get('question')
 
     # Perform vector search based on the user input
@@ -177,10 +193,10 @@ def ask():
     formatted_content = format_search_content(search_results)
 
     # Get the response from the LLM
-    response = get_llm_response(user_input, formatted_content, user_id)
+    response = get_llm_response(user_input, formatted_content, user_id,thread_id)
 
-    # Save conversation history in Cosmos DB
-    save_conversation(user_id, user_input, response)
+    # Save conversation history in Cosmos DB, including thread ID
+    save_conversation(user_id, thread_id, user_input, response)
 
     # Send the response back to the UI with text and image paths
     return jsonify({
@@ -188,10 +204,11 @@ def ask():
         'images': [res['image_path'] for res in search_results]  # Return the image paths
     })
 
-# Endpoint to retrieve conversation history
-@app.route('/history/<user_id>', methods=['GET'])
-def history(user_id):
-    conversation_history = get_conversation_history(user_id)
+
+# Endpoint to retrieve conversation history by user and thread
+@app.route('/history/<user_id>/<thread_id>', methods=['GET'])
+def history(user_id, thread_id):
+    conversation_history = get_conversation_history(user_id, thread_id)
     return jsonify(conversation_history)
 
 if __name__ == "__main__":
