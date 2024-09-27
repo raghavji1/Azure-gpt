@@ -199,7 +199,7 @@ def ask():
 
     # Check if the response has more than 100 words
     word_count = len(response.split())
-    images = [res['image_path'] for res in search_results] if word_count > 100 else []
+    images = [res['image_path'] for res in search_results] if word_count > 160 else []
 
     # Send the response back to the UI with text and image paths (if applicable)
     return jsonify({
