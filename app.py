@@ -129,18 +129,28 @@ def get_llm_response(user_input, search_content, user_id, thread_id):
 
     return response.choices[0].message.content
 
-# Function to save conversation history in Cosmos DB
+
+
 # Function to save conversation history in Cosmos DB
 def save_conversation(user_id, thread_id, user_message, bot_response):
     item = {
-        'user_id': user_id,
-        'thread_id': thread_id,  # Store the thread ID
-        'id': str(uuid.uuid4()),  # Unique ID for the message
-        'user_message': user_message,
-        'bot_response': bot_response,
-        'timestamp': datetime.utcnow().isoformat()  # Store timestamp
+        'id': user_id,
+        'history': {
+            thread_id: {  # Make sure thread_id is defined and is a string
+                'heading': user_message,
+                'chats': [
+                    {
+                        'req': user_message,
+                        'res': bot_response
+                    }
+                ],
+            },
+        },
+        'timestamp': datetime.utcnow().isoformat()
     }
+
     container.upsert_item(item)
+
 
 
 def search_with_vector(query):
