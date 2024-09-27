@@ -188,6 +188,8 @@ def save_conversation(user_id, thread_id, user_message, bot_response):
     container.upsert_item(item)
 
 
+
+
 def search_with_vector(query):
     """
     Perform vector search using the user query and return search results.
