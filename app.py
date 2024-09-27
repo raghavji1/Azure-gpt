@@ -131,25 +131,37 @@ def get_llm_response(user_input, search_content, user_id, thread_id):
 
 
 
-# Function to save conversation history in Cosmos DB
+#featch and append the data into the cosmos client
 def save_conversation(user_id, thread_id, user_message, bot_response):
-    item = {
-        'id': user_id,
-        'history': {
-            thread_id: {  # Make sure thread_id is defined and is a string
-                'heading': user_message,
-                'chats': [
-                    {
-                        'req': user_message,
-                        'res': bot_response
-                    }
-                ],
-            },
-        },
-        'timestamp': datetime.utcnow().isoformat()
-    }
+    # Fetch the current document for the user
+    try:
+        item = container.read_item(item=user_id, partition_key=user_id)
+    except Exception as e:
+        # If the item doesn't exist, initialize it
+        item = {
+            'id': user_id,
+            'history': {}
+        }
 
+    # Check if the thread_id exists; if not, create it
+    if thread_id not in item['history']:
+        item['history'][thread_id] = {
+            'heading': user_message,  # You can set the heading only for the first message if needed
+            'chats': []
+        }
+    
+    # Append the new conversation to the chats list
+    item['history'][thread_id]['chats'].append({
+        'req': user_message,
+        'res': bot_response
+    })
+
+    # Update the timestamp
+    item['timestamp'] = datetime.utcnow().isoformat()
+
+    # Upsert the updated item back into Cosmos DB
     container.upsert_item(item)
+
 
 
 
